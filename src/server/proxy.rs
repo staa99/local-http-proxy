@@ -1,11 +1,16 @@
-use http_body_util::Full;
-use hyper::body::Bytes;
-use hyper::header::HOST;
-use hyper::{http, Request, Response};
+use http_body_util::{combinators::BoxBody, BodyExt};
+use hyper::{
+    body::{Bytes, Incoming}, header::HOST, http, Request,
+    Response,
+    StatusCode,
+    Uri,
+};
+use hyper_util::{
+    client::legacy::{connect::HttpConnector, Client},
+    rt::TokioExecutor,
+};
 use regex::Regex;
-use std::collections::HashMap;
-use std::convert::Infallible;
-use std::sync::LazyLock;
+use std::{collections::HashMap, convert::Infallible, sync::LazyLock};
 
 use crate::config::{AppConfig, ProxyMode};
 
@@ -27,17 +32,38 @@ static PATH_RE: LazyLock<Regex> = LazyLock::new(|| {
     .unwrap()
 });
 
+static CLIENT: LazyLock<Client<HttpConnector, Incoming>> = LazyLock::new(|| {
+    let mut http = HttpConnector::new();
+    http.set_nodelay(true);
+    Client::builder(TokioExecutor::new()).build(http)
+});
+
 pub async fn proxy_service(
-    req: Request<hyper::body::Incoming>,
-) -> Result<Response<Full<Bytes>>, Infallible> {
+    req: Request<Incoming>,
+) -> Result<Response<BoxBody<Bytes, hyper::Error>>, Infallible> {
     let config = AppConfig::instance();
-    let Some(_destination) = get_destination(&req, &config.mode, &config.routes) else {
-        let mut not_found = Response::new(Full::new(Bytes::from("Not Found")));
-        *not_found.status_mut() = http::StatusCode::NOT_FOUND;
-        return Ok(not_found);
+    let Some(destination) = get_destination(&req, &config.mode, &config.routes) else {
+        return Ok(not_found());
     };
 
-    Ok(Response::new(Full::new(Bytes::from("Hello, World!"))))
+    let uri = match build_upstream_uri(&destination.host, &destination.path) {
+        Some(u) => u,
+        None => return Ok(bad_gateway()),
+    };
+
+    let (parts, body) = req.into_parts();
+    let upstream_req = match build_upstream_request(parts, uri, body) {
+        Some(r) => r,
+        None => return Ok(internal_error()),
+    };
+
+    let res = match CLIENT.request(upstream_req).await {
+        Ok(r) => r,
+        Err(_) => return Ok(bad_gateway()),
+    };
+
+    let (parts, body) = res.into_parts();
+    Ok(Response::from_parts(parts, body.boxed()))
 }
 
 /// Determines the destination URL based on the request and proxy mode.
@@ -99,6 +125,61 @@ fn extract_key_from_host<B>(req: &Request<B>) -> Option<String> {
 
     let caps = HOST_RE.captures(&host)?;
     Some(caps.name("key")?.as_str().to_string())
+}
+
+fn boxed_full<T: Into<Bytes>>(data: T) -> BoxBody<Bytes, hyper::Error> {
+    http_body_util::Full::new(data.into())
+        .map_err(|never| match never {})
+        .boxed()
+}
+
+fn not_found() -> Response<BoxBody<Bytes, hyper::Error>> {
+    Response::builder()
+        .status(StatusCode::NOT_FOUND)
+        .body(boxed_full("Local Http Proxy: Route Not Found"))
+        .unwrap()
+}
+
+fn bad_gateway() -> Response<BoxBody<Bytes, hyper::Error>> {
+    Response::builder()
+        .status(StatusCode::BAD_GATEWAY)
+        .body(boxed_full("Local Http Proxy: Bad Gateway"))
+        .unwrap()
+}
+
+fn internal_error() -> Response<BoxBody<Bytes, hyper::Error>> {
+    Response::builder()
+        .status(StatusCode::INTERNAL_SERVER_ERROR)
+        .body(boxed_full("Local Http Proxy: Internal Error"))
+        .unwrap()
+}
+
+fn build_upstream_uri(host: &str, path: &str) -> Option<Uri> {
+    let uri = format!("{}{}", host, path);
+    uri.parse().ok()
+}
+
+fn build_upstream_request(
+    parts: http::request::Parts,
+    uri: Uri,
+    body: Incoming,
+) -> Option<Request<Incoming>> {
+    let mut builder = Request::builder()
+        .method(parts.method)
+        .version(parts.version)
+        .uri(uri);
+
+    if let Some(headers) = builder.headers_mut() {
+        for (k, v) in parts.headers.iter() {
+            if k != HOST {
+                headers.insert(k, v.clone());
+            }
+        }
+    } else {
+        return None;
+    }
+
+    builder.body(body).ok()
 }
 
 #[cfg(test)]
