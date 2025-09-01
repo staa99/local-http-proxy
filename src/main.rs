@@ -1,20 +1,25 @@
+mod commands;
 mod config;
 mod server;
 
+use crate::commands::{handle_config_command, handle_start_command};
+use crate::config::Command;
+use clap::Parser;
+use config::{AppConfig, Args};
 use std::error::Error;
-use config::AppConfig;
 
 #[tokio::main]
-async fn main()  -> Result<(), Box<dyn Error + Send + Sync>> {
-    // This handles all CLI commands.
-    // If the command is 'start', it loads config and returns the instance.
-    // Otherwise, it performs the action (e.g., 'add') and exits.
-    let config = AppConfig::load();
+async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
+    let args = Args::parse();
 
-    // The following code only runs for the `start` command.
-    println!("🚀 Starting proxy server on port {}...", config.port);
-    println!("   Mode: {}", config.mode);
-    println!("   Routes loaded: {}", config.routes.len());
+    // ensure the app config is loaded and ready to be used in commands
+    AppConfig::load(&args);
 
-    server::start_server().await
+    match &args.command {
+        Command::Start { .. } => handle_start_command().await,
+        Command::List => handle_config_command(&args.command),
+        Command::Add { .. } => handle_config_command(&args.command),
+        Command::Remove { .. } => handle_config_command(&args.command),
+        Command::SetMode { .. } => handle_config_command(&args.command),
+    }
 }
