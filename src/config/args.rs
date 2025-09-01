@@ -18,7 +18,7 @@ pub enum Command {
     /// Starts the HTTP proxy server.
     Start {
         /// A custom port to override the main port argument for this command.
-        #[arg(short, long, env, default_value_t = 80)]
+        #[arg(short, long, env, default_value_t = 8000)]
         port: u16,
     },
 

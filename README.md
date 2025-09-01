@@ -9,10 +9,10 @@ localhost ports.
 
 The `name` (api, frontend) becomes the URL segment. The `target` is where the service is actually running.
 
-### Forwards requests from `/api` -> `localhost:8000`
+### Forwards requests from `/api` -> `localhost:8080`
 
 ```shell
-local-http-proxy add api localhost:8000
+local-http-proxy add api localhost:8080
 ```
 
 ### Forwards requests from `/frontend` -> `localhost:3000`
@@ -23,7 +23,7 @@ local-http-proxy add frontend localhost:3000
 
 **2. Start the proxy server:**
 
-The server will now listen on localhost (port 8080 by default). You may need sudo for privileged ports.
+The server will now listen on localhost (port 8000 by default). You may need sudo for privileged ports.
 
 ```shell
 local-http-proxy start
