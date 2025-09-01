@@ -17,11 +17,11 @@ pub struct Args {
 pub enum Command {
     /// Starts the HTTP proxy server.
     Start {
-        /// A custom port to override the main port argument for this command.
-        #[arg(short, long, env, default_value_t = 8000)]
-        port: u16,
+        /// The port to use. Defaults to 8000, or as defined in the config file.
+        #[arg(short, long, env, required = false)]
+        port: Option<u16>,
 
-        /// The proxy mode to use.
+        /// The proxy mode to use. Defaults to path, or as defined in the config file.
         #[arg(short, long, env, required = false)]
         mode: Option<ProxyMode>,
     },

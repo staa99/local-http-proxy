@@ -52,11 +52,11 @@ impl AppConfig {
 fn apply_overrides(config: &mut AppConfig, args: &Args) {
     match &args.command {
         Command::Start { port, mode } => {
-            config.port = *port;
+            config.port = port.unwrap_or(config.port);
             config.mode = mode.unwrap_or(config.mode);
         }
         _ => {
-            // there's no overrides from the other commands yet
+            // there are no overrides from the other commands yet
         }
     }
 }
