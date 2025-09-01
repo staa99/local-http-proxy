@@ -1,4 +1,4 @@
-use super::util::is_valid_source_name;
+use super::util::{normalize_source_key, normalize_target};
 use crate::config::{
     util::{read_config_file, write_config_file}, AppConfig, Command, ConfigFile,
     ProxyMode,
@@ -68,17 +68,14 @@ fn handle_add_command(
     source: &String,
     target: &String,
 ) -> Result<(), Box<dyn Error>> {
-    if !is_valid_source_name(source) {
-        return Err(Box::from(format!(
-            "Invalid source name: \"{}\".\n\n  The name must be a single segment usable in both a URL path and a domain.\n\n  - Must contain only letters (a-z), numbers (0-9), and hyphens (-).\n  - Must not start or end with a hyphen.\n  - Must not contain '.' or '/'.\n\n  Examples of valid names: 'my-app', 'api', 'project1'",
-            source
-        )));
-    }
+    let source = normalize_source_key(source).map_err(|e| Box::<dyn Error>::from(e))?;
+    let target = normalize_target(target).map_err(|e| Box::<dyn Error>::from(e))?;
 
-    if let Some(old) = config.routes.insert(source.clone(), target.clone()) {
-        println!("✅ Updated route: {} → {} (was → {})", source, target, old);
+    let source_to_target = format!("{source} → {target}");
+    if let Some(old) = config.routes.insert(source, target) {
+        println!("✅ Updated route: {source_to_target} (was → {old})");
     } else {
-        println!("✅ Added route: {} → {}", source, target);
+        println!("✅ Added route: {source_to_target}");
     }
     write_config_file(path, &config)?;
     Ok(())
@@ -89,11 +86,16 @@ fn handle_remove_command(
     config: &mut ConfigFile,
     source: &String,
 ) -> Result<(), Box<dyn Error>> {
-    if config.routes.remove(source).is_some() {
-        println!("✅ Removed route for: {}", source);
+    let source = match normalize_source_key(source) {
+        Ok(s) => s,
+        Err(_) => source.trim().to_ascii_lowercase(),
+    };
+
+    if config.routes.remove(&source).is_some() {
+        println!("✅ Removed route for: {source}");
         write_config_file(path, &config)?;
     } else {
-        println!("⚠️  No route found for '{}'. Nothing to remove.", source);
+        println!("⚠️  No route found for '{source}'. Nothing to remove.");
     }
     Ok(())
 }
