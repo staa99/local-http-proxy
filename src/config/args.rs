@@ -20,6 +20,10 @@ pub enum Command {
         /// A custom port to override the main port argument for this command.
         #[arg(short, long, env, default_value_t = 8000)]
         port: u16,
+
+        /// The proxy mode to use.
+        #[arg(short, long, env, required = false)]
+        mode: Option<ProxyMode>,
     },
 
     /// Lists all active routes and the current mode.
