@@ -1,8 +1,11 @@
 mod config;
+mod server;
 
+use std::error::Error;
 use config::AppConfig;
 
-fn main() {
+#[tokio::main]
+async fn main()  -> Result<(), Box<dyn Error + Send + Sync>> {
     // This handles all CLI commands.
     // If the command is 'start', it loads config and returns the instance.
     // Otherwise, it performs the action (e.g., 'add') and exits.
@@ -13,5 +16,5 @@ fn main() {
     println!("   Mode: {}", config.mode);
     println!("   Routes loaded: {}", config.routes.len());
 
-    // TODO: Start the actual proxy server here.
+    server::start_server().await
 }
